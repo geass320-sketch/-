@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>故事 5×5 分镜生成器</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="hero">
+    <div>
+      <p class="eyebrow">故事驱动 · 25 格分镜</p>
+      <h1>一键把故事拆成 5×5 分镜</h1>
+      <p class="subtitle">
+        输入故事文本，自动拆解为 25 个镜头描述，同时生成可下载的分镜图。
+      </p>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="panel form-panel">
+      <h2>故事输入</h2>
+      <label class="field">
+        <span>故事标题</span>
+        <input id="story-title" type="text" placeholder="例如：雾海之上的灯塔" />
+      </label>
+      <label class="field">
+        <span>故事内容</span>
+        <textarea id="story-text" rows="8" placeholder="粘贴或输入完整故事内容，系统将自动拆解为 25 个镜头。"></textarea>
+      </label>
+      <div class="toolbar">
+        <button id="generate-btn" class="primary">生成分镜</button>
+        <button id="shuffle-btn" class="ghost">随机示例</button>
+      </div>
+      <p class="hint">提示：支持任意长度文本，系统会自动填充或截断为 25 个镜头。</p>
+    </section>
+
+    <section class="panel output-panel">
+      <div class="output-header">
+        <div>
+          <h2>分镜预览</h2>
+          <p id="panel-count">共 25 格</p>
+        </div>
+        <button id="download-btn" class="primary" disabled>下载 PNG</button>
+      </div>
+      <div id="storyboard-grid" class="storyboard-grid"></div>
+    </section>
+
+    <section class="panel canvas-panel">
+      <h2>输出画布</h2>
+      <canvas id="storyboard-canvas" width="2500" height="2500"></canvas>
+      <p class="hint">画布大小为 2500×2500，可直接作为打印或分享素材。</p>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>用于快速故事拆解、视觉创意草图与镜头节奏推演。</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
