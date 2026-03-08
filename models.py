@@ -65,3 +65,12 @@ class ValidationResult:
 
     ok: bool
     reason: str
+
+
+@dataclass(frozen=True)
+class GenerationOutput:
+    """Per-task generation output after validation and download."""
+
+    task_id: int
+    video_src: str
+    download_path: Path

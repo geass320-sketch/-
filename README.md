@@ -8,7 +8,7 @@ Requirements:
 - Python 3.11+
 - `playwright` installed and browser binaries available
 
-Example:
+Single video:
 
 ```bash
 python auto_gen.py \
@@ -19,6 +19,22 @@ python auto_gen.py \
   --ratio "16:9" \
   --duration "5s" \
   --mode text2video \
+  --output-dir ./downloads
+```
+
+Multiple videos (wait until all tasks complete and return results):
+
+```bash
+python auto_gen.py \
+  --base-url "https://seedance.example.com/create" \
+  --cookies ./cookies.json \
+  --prompt "A cinematic tracking shot of a courier sprinting through neon rain" \
+  --model "seedance-v1" \
+  --ratio "16:9" \
+  --duration "5s" \
+  --mode text2video \
+  --count 3 \
+  --concurrency 2 \
   --output-dir ./downloads
 ```
 
