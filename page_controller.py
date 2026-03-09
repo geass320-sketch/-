@@ -34,51 +34,51 @@ class PageController:
     def preflight_selectors(self) -> dict[str, dict[str, object]]:
         """Resolve selectors from candidate lists and validate presence/visibility."""
         requirements = {
-            "prompt_textarea": (True, [
+            "prompt_textarea": (True, True, [
                 self.config.selectors.prompt_textarea,
                 "textarea[data-testid='prompt-input']",
                 "[contenteditable='true'][data-testid*='prompt']",
             ]),
-            "mode_tab": (False, [
+            "mode_tab": (False, True, [
                 self.config.selectors.mode_tab,
                 "[data-testid*='mode'] [role='tab']",
                 "button[role='tab']",
             ]),
-            "model_dropdown": (True, [
+            "model_dropdown": (True, True, [
                 self.config.selectors.model_dropdown,
                 "[data-testid*='model']",
                 "button[aria-label*='模型'], button[aria-label*='Model']",
             ]),
-            "ratio_dropdown": (True, [
+            "ratio_dropdown": (True, True, [
                 self.config.selectors.ratio_dropdown,
                 "[data-testid*='ratio']",
                 "button[aria-label*='比例'], button[aria-label*='Ratio']",
             ]),
-            "duration_dropdown": (True, [
+            "duration_dropdown": (True, True, [
                 self.config.selectors.duration_dropdown,
                 "[data-testid*='duration']",
                 "button[aria-label*='时长'], button[aria-label*='Duration']",
             ]),
-            "upload_input": (False, [
+            "upload_input": (False, False, [
                 self.config.selectors.upload_input,
                 "input[type='file'][accept*='image']",
                 "input[type='file'][accept*='video']",
             ]),
-            "generate_button": (True, [
+            "generate_button": (False, True, [
                 self.config.selectors.generate_button,
                 "button[data-testid*='generate']",
                 "button:has-text('立即生成'), button:has-text('生成视频')",
             ]),
-            "latest_video": (False, [
+            "latest_video": (False, False, [
                 self.config.selectors.latest_video,
                 "[data-testid*='video'] video",
             ]),
-            "latest_video_card": (False, [
+            "latest_video_card": (False, False, [
                 self.config.selectors.latest_video_card,
                 "[data-testid*='card']",
                 ".card",
             ]),
-            "download_button": (False, [
+            "download_button": (False, False, [
                 self.config.selectors.download_button,
                 "[data-testid*='download']",
                 "a[href*='.mp4']",
@@ -86,8 +86,8 @@ class PageController:
         }
 
         report: dict[str, dict[str, object]] = {}
-        for label, (exact_one, candidates) in requirements.items():
-            resolved, info = self._resolve_selector(candidates=candidates, exact_one=exact_one)
+        for label, (exact_one, require_visible, candidates) in requirements.items():
+            resolved, info = self._resolve_selector(candidates=candidates, exact_one=exact_one, require_visible=require_visible)
             report[label] = info
             if resolved is None:
                 self._preflight_report = report
@@ -97,23 +97,67 @@ class PageController:
         self._preflight_report = report
         return report
 
-    def _resolve_selector(self, candidates: list[str], exact_one: bool) -> tuple[str | None, dict[str, object]]:
+    def _resolve_selector(
+        self,
+        candidates: list[str],
+        exact_one: bool,
+        require_visible: bool,
+    ) -> tuple[str | None, dict[str, object]]:
         stats: list[dict[str, object]] = []
         for selector in candidates:
             locator = self.page.locator(selector)
             count = locator.count()
             visible = sum(1 for idx in range(count) if locator.nth(idx).is_visible())
             stats.append({"selector": selector, "count": count, "visible": visible})
+
+            visible_ok = visible >= 1 if require_visible else count >= 1
             if exact_one:
-                if count == 1 and visible >= 1:
+                if count == 1 and visible_ok:
                     return selector, {"selected": selector, "candidates": stats}
             else:
-                if count >= 1 and visible >= 1:
+                if count >= 1 and visible_ok:
                     return selector, {"selected": selector, "candidates": stats}
         return None, {"selected": None, "candidates": stats}
 
     def _sel(self, label: str, fallback: str) -> str:
         return self._resolved.get(label, fallback)
+
+    def _first_prefer_visible(self, selector: str) -> Locator:
+        loc = self.page.locator(selector)
+        if loc.count() < 1:
+            raise PageControlError(f"Selector not found: {selector}")
+        for idx in range(loc.count()):
+            node = loc.nth(idx)
+            if node.is_visible():
+                return node
+        return loc.first
+
+    def set_mode(self, mode_value: str) -> None:
+        """Select generation mode tab best-effort and verify mode consistency."""
+        mapping = {
+            "text2video": ["全能参考", "文生视频", "文本", "Text"],
+            "first_frame": ["首帧", "首图", "First Frame"],
+            "first_last_frame": ["首尾帧", "首尾", "First/Last"],
+            "extend": ["续写", "扩展", "Extend"],
+        }
+        candidates = mapping.get(mode_value, [mode_value])
+
+        tabs = self.page.locator(self._sel("mode_tab", self.config.selectors.mode_tab))
+        if tabs.count() < 1:
+            raise PageControlError("未找到模式选择区域")
+
+        for label in candidates:
+            node = tabs.filter(has_text=label)
+            if node.count() > 0:
+                target = node.first
+                target.scroll_into_view_if_needed()
+                target.click(timeout=3_000)
+                current = self.current_mode_label().lower()
+                if label.lower()[:2] in current or label.lower() in current:
+                    return
+
+        current = self.current_mode_label()
+        raise PageControlError(f"模式选择失败: 期望 {mode_value}, 当前 {current}")
 
     def current_mode_label(self) -> str:
         """Return currently selected mode text from UI when available."""
@@ -129,7 +173,7 @@ class PageController:
         """Fill prompt and verify read-back value to avoid accidental generation."""
         if not prompt.strip():
             raise PageControlError("Prompt is empty; generation is blocked")
-        field = self.page.locator(self._sel("prompt_textarea", self.config.selectors.prompt_textarea)).first
+        field = self._first_prefer_visible(self._sel("prompt_textarea", self.config.selectors.prompt_textarea))
         field.fill(prompt)
         if field.input_value().strip() != prompt.strip():
             raise PageControlError("Prompt writeback verification failed")
@@ -148,7 +192,7 @@ class PageController:
         last_err = ""
         for _ in range(3):
             try:
-                control = self.page.locator(selector).first
+                control = self._first_prefer_visible(selector)
                 control.scroll_into_view_if_needed()
                 control.click(timeout=3_000)
 
@@ -180,7 +224,7 @@ class PageController:
         raise PageControlError(f"{label} selection verification failed for '{value}': {last_err}")
 
     def set_reference_files(self, paths: tuple[Path, ...]) -> bool:
-        """Upload files directly through input[type=file] without clicking upload trigger."""
+        """Upload files directly through input[type=file] without opening file chooser."""
         if not paths:
             return False
         for path in paths:
@@ -188,6 +232,15 @@ class PageController:
                 raise PageControlError(f"当前缺少可上传的本地文件路径/素材下载失败: {path}")
 
         selector = self._sel("upload_input", self.config.selectors.upload_input)
+
+        try:
+            self.page.set_input_files(selector, [str(path) for path in paths], timeout=5_000)
+            marker = self.page.locator(self.config.selectors.uploaded_asset_marker)
+            if marker.count() > 0:
+                return True
+        except Exception:
+            pass
+
         inputs = self.page.locator(selector)
         if inputs.count() < 1:
             raise PageControlError("未找到可用上传 input[type=file]")
@@ -217,7 +270,7 @@ class PageController:
 
     def click_generate(self) -> None:
         """Click generate button with robust interactability checks."""
-        button = self.page.locator(self._sel("generate_button", self.config.selectors.generate_button)).first
+        button = self._first_prefer_visible(self._sel("generate_button", self.config.selectors.generate_button))
         last_err = ""
         for _ in range(3):
             try:
@@ -240,7 +293,7 @@ class PageController:
 
     def ensure_generate_clickable(self) -> None:
         """Try to make generate button interactable for retry clicks."""
-        button = self.page.locator(self._sel("generate_button", self.config.selectors.generate_button)).first
+        button = self._first_prefer_visible(self._sel("generate_button", self.config.selectors.generate_button))
         button.scroll_into_view_if_needed()
         for selector in ("button:has-text('关闭')", "button:has-text('稍后')", "[aria-label='Close']", ".guide-close", ".modal-close"):
             node = self.page.locator(selector)

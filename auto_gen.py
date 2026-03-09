@@ -272,6 +272,7 @@ def run_single_generation(
             ok_path = config.output_dir / f"task_{task_id}_selector_check.ok"
             return GenerationOutput(task_id=task_id, video_src="selector-check-only", download_path=ok_path)
 
+        controller.set_mode(request.mode.value)
         controller.set_prompt_with_verification(plan.compiled_prompt)
         controller.ensure_option_selected("model", request.model)
         controller.ensure_option_selected("ratio", request.ratio)
