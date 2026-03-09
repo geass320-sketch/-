@@ -300,6 +300,50 @@ class PageController:
             if node.count() > 0 and node.first.is_visible():
                 node.first.click()
 
+
+    def generate_button_visible(self) -> bool:
+        """Return whether a visible generate button currently exists."""
+        locator = self.page.locator(self._sel("generate_button", self.config.selectors.generate_button))
+        for idx in range(locator.count()):
+            if locator.nth(idx).is_visible():
+                return True
+        return False
+
+    def visible_bottom_actions(self) -> list[str]:
+        """Collect visible button labels near the action area for debugging missing-generate cases."""
+        actions: list[str] = []
+        buttons = self.page.locator("button")
+        for idx in range(min(buttons.count(), 60)):
+            node = buttons.nth(idx)
+            if not node.is_visible():
+                continue
+            text = node.inner_text().strip()
+            if not text:
+                continue
+            if any(k in text for k in ("生成", "匹配", "底部", "上传", "首帧", "尾帧", "720", "1080", "模型", "时长")):
+                actions.append(text)
+        dedup: list[str] = []
+        seen: set[str] = set()
+        for item in actions:
+            if item not in seen:
+                seen.add(item)
+                dedup.append(item)
+        return dedup
+
+    def upload_state_snapshot(self) -> dict[str, object]:
+        """Return upload verification state from marker and file-input values."""
+        marker_count = self.page.locator(self.config.selectors.uploaded_asset_marker).count()
+        selector = self._sel("upload_input", self.config.selectors.upload_input)
+        inputs = self.page.locator(selector)
+        file_counts: list[int] = []
+        for idx in range(inputs.count()):
+            try:
+                cnt = int(inputs.nth(idx).evaluate("(el) => (el.files ? el.files.length : 0)"))
+            except Exception:  # noqa: BLE001
+                cnt = -1
+            file_counts.append(cnt)
+        return {"upload_marker_count": marker_count, "input_file_counts": file_counts}
+
     def toast_messages(self) -> list[str]:
         """Collect visible toast/status messages for diagnostics."""
         messages: list[str] = []

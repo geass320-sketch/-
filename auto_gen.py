@@ -115,6 +115,9 @@ def _collect_diagnostics(
         "toast": controller.toast_messages(),
         "form_errors": controller.form_errors(),
         "explicit_failures": controller.explicit_failure_messages(),
+        "generate_button_visible": controller.generate_button_visible(),
+        "visible_bottom_actions": controller.visible_bottom_actions(),
+        "upload_state": controller.upload_state_snapshot(),
     }
     return json.dumps(payload, ensure_ascii=False)
 
@@ -297,6 +300,19 @@ def run_single_generation(
             old_src = ""
         old_card_count = controller.card_count()
         logging.info("[plan=%s] baseline old_src=%s old_card_count=%d", plan_id, old_src, old_card_count)
+
+        if not controller.generate_button_visible():
+            diagnostics = _collect_diagnostics(
+                controller=controller,
+                mode_label=mode_label,
+                upload_ok=upload_ok,
+                prompt_len=len(plan.compiled_prompt),
+                old_src=old_src,
+                new_src="",
+                old_card_count=old_card_count,
+                new_card_count=controller.card_count(),
+            )
+            raise PipelineError(f"页面未显示可点击的生成按钮，请检查页面错误提示与上传状态: {diagnostics}")
 
         controller.click_generate()
         if not _wait_for_trigger_ack(controller, old_card_count=old_card_count, timeout_seconds=config.trigger_timeout_seconds):
