@@ -12,13 +12,16 @@ class SeedanceSelectors:
 
     prompt_textarea: str = "textarea[placeholder*='prompt'], textarea"
     mode_tab: str = "[data-testid='mode-select'], [role='tablist'] [role='tab'], .mode-select"
+    creation_type_trigger: str = "button:has-text('Agent 模式'), button:has-text('视频生成'), [data-testid*='creation-type']"
+    creation_video_option: str = "text=视频生成"
+    reference_mode_trigger: str = "button:has-text('全能参考'), button:has-text('首帧'), button:has-text('首尾帧'), [data-testid*='reference-mode']"
     selected_mode: str = "[role='tab'][aria-selected='true'], [data-testid='mode-active'], .mode.active"
     model_dropdown: str = "[data-testid='model-select'], [aria-label*='model'], .model-select"
     ratio_dropdown: str = "[data-testid='ratio-select'], [aria-label*='ratio'], .ratio-select"
     duration_dropdown: str = "[data-testid='duration-select'], [aria-label*='duration'], .duration-select"
     upload_input: str = "input[type='file']"
     uploaded_asset_marker: str = "[data-testid='upload-thumb'], .upload-thumb, button[aria-label*='删除'], .uploaded-item"
-    generate_button: str = "[data-testid='generate-button'], button:has-text('Generate'), button:has-text('生成')"
+    generate_button: str = "[data-testid='generate-button'], button[aria-label*='生成'], button[aria-label*='发送'], button:has-text('Generate'), button:has-text('立即生成'), button:has-text('生成视频')"
     generate_busy: str = "[data-testid='generate-button'][aria-busy='true'], button[aria-busy='true'], .loading, .spinner"
     toast: str = "[role='status'], .toast, .message, .notice"
     form_error: str = ".error, [aria-invalid='true'], [data-testid='form-error']"
@@ -27,6 +30,7 @@ class SeedanceSelectors:
     latest_video: str = "video"
     download_button: str = "a[download], [data-testid='download-button'], button:has-text('Download'), button:has-text('下载')"
     option_items: str = "[role='option'], [data-testid='select-option'], .select-option"
+    composer_container: str = "[data-testid*='composer'], .composer, .input-panel, .input-container"
 
 
 @dataclass(frozen=True)

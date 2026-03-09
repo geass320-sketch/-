@@ -133,32 +133,50 @@ class PageController:
         return loc.first
 
     def set_mode(self, mode_value: str) -> None:
-        """Select generation mode tab best-effort and verify mode consistency."""
-        mapping = {
-            "text2video": ["全能参考", "文生视频", "文本", "Text"],
-            "first_frame": ["首帧", "首图", "First Frame"],
-            "first_last_frame": ["首尾帧", "首尾", "First/Last"],
-            "extend": ["续写", "扩展", "Extend"],
+        """Select creation type + reference mode to match requested mode."""
+        self._ensure_creation_type_video()
+
+        reference_mapping = {
+            "text2video": ["全能参考"],
+            "first_frame": ["首帧"],
+            "first_last_frame": ["首尾帧"],
+            "extend": ["全能参考", "智能多帧"],
         }
-        candidates = mapping.get(mode_value, [mode_value])
+        targets = reference_mapping.get(mode_value, ["全能参考"])
 
-        tabs = self.page.locator(self._sel("mode_tab", self.config.selectors.mode_tab))
-        if tabs.count() < 1:
-            raise PageControlError("未找到模式选择区域")
+        trigger = self.page.locator(self.config.selectors.reference_mode_trigger)
+        if trigger.count() < 1:
+            return
 
-        for label in candidates:
-            node = tabs.filter(has_text=label)
-            if node.count() > 0:
-                target = node.first
-                target.scroll_into_view_if_needed()
-                target.click(timeout=3_000)
-                current = self.current_mode_label().lower()
-                if label.lower()[:2] in current or label.lower() in current:
+        for label in targets:
+            try:
+                self._first_prefer_visible(self.config.selectors.reference_mode_trigger).click(timeout=2_000)
+                option = self.page.get_by_text(label, exact=False)
+                if option.count() > 0:
+                    option.first.click(timeout=2_000)
                     return
+            except Exception:  # noqa: BLE001
+                self.page.keyboard.press("Escape")
+                continue
 
-        current = self.current_mode_label()
-        raise PageControlError(f"模式选择失败: 期望 {mode_value}, 当前 {current}")
+    def _ensure_creation_type_video(self) -> None:
+        """Ensure creation type is switched to 视频生成 if menu is present."""
+        visible_video = self.page.locator("button:has-text('视频生成')")
+        if visible_video.count() > 0 and visible_video.first.is_visible():
+            return
 
+        trigger = self.page.locator(self.config.selectors.creation_type_trigger)
+        if trigger.count() < 1:
+            return
+
+        try:
+            self._first_prefer_visible(self.config.selectors.creation_type_trigger).click(timeout=2_000)
+        except Exception:  # noqa: BLE001
+            return
+
+        option = self.page.locator(self.config.selectors.creation_video_option)
+        if option.count() > 0:
+            option.first.click(timeout=2_000)
     def current_mode_label(self) -> str:
         """Return currently selected mode text from UI when available."""
         selected = self.page.locator(self.config.selectors.selected_mode)
@@ -268,9 +286,43 @@ class PageController:
         except Exception:  # noqa: BLE001
             return False
 
+    def _fallback_generate_button(self) -> Locator | None:
+        """Return best-effort fallback generate button from bottom-right icon-only controls."""
+        buttons = self.page.locator("button")
+        best: Locator | None = None
+        best_score = -10_000.0
+        for idx in range(min(buttons.count(), 80)):
+            node = buttons.nth(idx)
+            if not node.is_visible():
+                continue
+            text = node.inner_text().strip()
+            aria = (node.get_attribute("aria-label") or "").strip().lower()
+            title = (node.get_attribute("title") or "").strip().lower()
+            if "生成" in text or "generate" in text.lower() or "发送" in aria or "send" in aria:
+                return node
+            if text:
+                continue
+            box = node.bounding_box()
+            if not box:
+                continue
+            score = box["x"] + box["y"]
+            if "send" in aria or "发送" in aria or "生成" in aria or "send" in title:
+                score += 10_000
+            if score > best_score:
+                best_score = score
+                best = node
+        return best
+
     def click_generate(self) -> None:
         """Click generate button with robust interactability checks."""
-        button = self._first_prefer_visible(self._sel("generate_button", self.config.selectors.generate_button))
+        try:
+            button = self._first_prefer_visible(self._sel("generate_button", self.config.selectors.generate_button))
+        except Exception:  # noqa: BLE001
+            fallback = self._fallback_generate_button()
+            if fallback is None:
+                raise PageControlError("未找到可点击的生成按钮")
+            button = fallback
+
         last_err = ""
         for _ in range(3):
             try:
@@ -286,7 +338,7 @@ class PageController:
                 try:
                     button.click(timeout=3_000, force=True)
                     return
-                except PlaywrightTimeoutError:
+                except Exception:  # noqa: BLE001
                     self.page.keyboard.press("Enter")
                     continue
         raise PageControlError(f"点击生成失败: {last_err}")
@@ -307,28 +359,21 @@ class PageController:
         for idx in range(locator.count()):
             if locator.nth(idx).is_visible():
                 return True
-        return False
+        return self._fallback_generate_button() is not None
 
     def visible_bottom_actions(self) -> list[str]:
-        """Collect visible button labels near the action area for debugging missing-generate cases."""
+        """Collect visible buttons for debugging missing-generate cases."""
         actions: list[str] = []
         buttons = self.page.locator("button")
-        for idx in range(min(buttons.count(), 60)):
+        for idx in range(min(buttons.count(), 80)):
             node = buttons.nth(idx)
             if not node.is_visible():
                 continue
             text = node.inner_text().strip()
             if not text:
-                continue
-            if any(k in text for k in ("生成", "匹配", "底部", "上传", "首帧", "尾帧", "720", "1080", "模型", "时长")):
-                actions.append(text)
-        dedup: list[str] = []
-        seen: set[str] = set()
-        for item in actions:
-            if item not in seen:
-                seen.add(item)
-                dedup.append(item)
-        return dedup
+                text = "(空)"
+            actions.append(f"Button#{idx}: {text}")
+        return actions
 
     def upload_state_snapshot(self) -> dict[str, object]:
         """Return upload verification state from marker and file-input values."""

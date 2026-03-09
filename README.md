@@ -94,7 +94,7 @@ python auto_gen.py \
 - `old_src/new_src`
 - `old_card_count/new_card_count`
 - `toast/form_errors`
-- `generate_button_visible` 与 `visible_bottom_actions`（用于定位“为什么没显示立即生成”）
+- `generate_button_visible` 与 `visible_bottom_actions`（会输出当前可见按钮清单，如 `Button#4: 回到底部` / `Button#2: (空)`）
 - `upload_state`（上传缩略图计数 + file input 已写入数量）
 - 下载后的 `ffprobe` 摘要
 

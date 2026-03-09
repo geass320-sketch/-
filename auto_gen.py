@@ -268,7 +268,6 @@ def run_single_generation(
         controller.navigate()
         preflight_report = controller.preflight_selectors()
         logging.info("[plan=%s] preflight_report=%s", plan_id, json.dumps(preflight_report, ensure_ascii=False))
-        mode_label = controller.current_mode_label()
 
         if selector_check_only:
             browser.close()
@@ -276,6 +275,7 @@ def run_single_generation(
             return GenerationOutput(task_id=task_id, video_src="selector-check-only", download_path=ok_path)
 
         controller.set_mode(request.mode.value)
+        mode_label = controller.current_mode_label()
         controller.set_prompt_with_verification(plan.compiled_prompt)
         controller.ensure_option_selected("model", request.model)
         controller.ensure_option_selected("ratio", request.ratio)
