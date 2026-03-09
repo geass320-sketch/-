@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from playwright.sync_api import Locator, Page
+from playwright.sync_api import Locator, Page, TimeoutError as PlaywrightTimeoutError
 
 from config import PipelineConfig
 
@@ -62,6 +62,7 @@ class PageController:
             "upload_input": (False, [
                 self.config.selectors.upload_input,
                 "input[type='file'][accept*='image']",
+                "input[type='file'][accept*='video']",
             ]),
             "generate_button": (True, [
                 self.config.selectors.generate_button,
@@ -111,10 +112,6 @@ class PageController:
                     return selector, {"selected": selector, "candidates": stats}
         return None, {"selected": None, "candidates": stats}
 
-    def preflight_report(self) -> dict[str, dict[str, object]]:
-        """Return latest preflight report for debugging."""
-        return self._preflight_report
-
     def _sel(self, label: str, fallback: str) -> str:
         return self._resolved.get(label, fallback)
 
@@ -138,7 +135,7 @@ class PageController:
             raise PageControlError("Prompt writeback verification failed")
 
     def ensure_option_selected(self, label: str, value: str) -> None:
-        """Select model/ratio/duration with stable selectors and verify selection."""
+        """Select model/ratio/duration with retry strategies and verification."""
         mapping = {
             "model": self._sel("model_dropdown", self.config.selectors.model_dropdown),
             "ratio": self._sel("ratio_dropdown", self.config.selectors.ratio_dropdown),
@@ -148,46 +145,104 @@ class PageController:
         if selector is None:
             raise PageControlError(f"Unknown option label: {label}")
 
-        control = self.page.locator(selector).first
-        control.click()
-        role_option = self.page.get_by_role("option", name=value)
-        if role_option.count() > 0:
-            role_option.first.click()
-        else:
-            option = self.page.locator(self.config.selectors.option_items).filter(has_text=value)
-            if option.count() == 0:
-                option = self.page.locator(f"[aria-selected][data-value='{value}'], [data-value='{value}']")
-            if option.count() == 0:
-                raise PageControlError(f"{label} option not found for value '{value}'")
-            option.first.click()
+        last_err = ""
+        for _ in range(3):
+            try:
+                control = self.page.locator(selector).first
+                control.scroll_into_view_if_needed()
+                control.click(timeout=3_000)
 
-        selected_text = control.inner_text().strip().lower()
-        if value.strip().lower() not in selected_text:
-            selected = self.page.locator("[role='option'][aria-selected='true']").filter(has_text=value)
-            if selected.count() < 1:
-                raise PageControlError(f"{label} selection verification failed for value '{value}'")
+                role_option = self.page.get_by_role("option", name=value)
+                if role_option.count() > 0:
+                    role_option.first.click(timeout=3_000)
+                else:
+                    option = self.page.locator(self.config.selectors.option_items).filter(has_text=value)
+                    if option.count() == 0:
+                        option = self.page.locator(f"[aria-selected][data-value='{value}'], [data-value='{value}']")
+                    if option.count() == 0:
+                        option = self.page.get_by_text(value, exact=True)
+                    if option.count() == 0:
+                        raise PageControlError(f"{label} option not found for value '{value}'")
+                    option.first.click(timeout=3_000)
+
+                selected_text = control.inner_text().strip().lower()
+                if value.strip().lower() in selected_text:
+                    return
+                selected = self.page.locator("[role='option'][aria-selected='true']").filter(has_text=value)
+                if selected.count() > 0:
+                    return
+                last_err = f"{label} selection not reflected in UI"
+            except Exception as exc:  # noqa: BLE001
+                last_err = str(exc)
+                self.page.keyboard.press("Escape")
+                continue
+
+        raise PageControlError(f"{label} selection verification failed for '{value}': {last_err}")
 
     def set_reference_files(self, paths: tuple[Path, ...]) -> bool:
-        """Upload provided references only; returns True when marker appears."""
+        """Upload files directly through input[type=file] without clicking upload trigger."""
         if not paths:
             return False
         for path in paths:
             if not path.exists() or path.stat().st_size <= 0:
                 raise PageControlError(f"当前缺少可上传的本地文件路径/素材下载失败: {path}")
-        input_node = self.page.locator(self._sel("upload_input", self.config.selectors.upload_input)).first
-        input_node.set_input_files([str(path) for path in paths])
+
+        selector = self._sel("upload_input", self.config.selectors.upload_input)
+        inputs = self.page.locator(selector)
+        if inputs.count() < 1:
+            raise PageControlError("未找到可用上传 input[type=file]")
+
+        last_err = ""
+        for idx in range(inputs.count()):
+            node = inputs.nth(idx)
+            try:
+                node.set_input_files([str(path) for path in paths], timeout=5_000)
+                if self._upload_verified(node):
+                    return True
+            except Exception as exc:  # noqa: BLE001
+                last_err = str(exc)
+                continue
+
+        raise PageControlError(f"上传失败：未能通过 input[type=file] 写入文件。{last_err}")
+
+    def _upload_verified(self, input_node: Locator) -> bool:
         marker = self.page.locator(self.config.selectors.uploaded_asset_marker)
-        return marker.count() > 0
+        if marker.count() > 0:
+            return True
+        try:
+            file_count = input_node.evaluate("(el) => (el.files ? el.files.length : 0)")
+            return int(file_count) > 0
+        except Exception:  # noqa: BLE001
+            return False
 
     def click_generate(self) -> None:
-        """Click generate button."""
-        self.page.locator(self._sel("generate_button", self.config.selectors.generate_button)).first.click()
+        """Click generate button with robust interactability checks."""
+        button = self.page.locator(self._sel("generate_button", self.config.selectors.generate_button)).first
+        last_err = ""
+        for _ in range(3):
+            try:
+                button.scroll_into_view_if_needed()
+                disabled = button.evaluate("(el) => el.disabled || el.getAttribute('aria-disabled') === 'true'")
+                if disabled:
+                    raise PageControlError("生成按钮当前为禁用态")
+                button.click(timeout=3_000)
+                return
+            except Exception as exc:  # noqa: BLE001
+                last_err = str(exc)
+                self.ensure_generate_clickable()
+                try:
+                    button.click(timeout=3_000, force=True)
+                    return
+                except PlaywrightTimeoutError:
+                    self.page.keyboard.press("Enter")
+                    continue
+        raise PageControlError(f"点击生成失败: {last_err}")
 
     def ensure_generate_clickable(self) -> None:
         """Try to make generate button interactable for retry clicks."""
         button = self.page.locator(self._sel("generate_button", self.config.selectors.generate_button)).first
         button.scroll_into_view_if_needed()
-        for selector in ("button:has-text('关闭')", "button:has-text('稍后')", "[aria-label='Close']", ".guide-close"):
+        for selector in ("button:has-text('关闭')", "button:has-text('稍后')", "[aria-label='Close']", ".guide-close", ".modal-close"):
             node = self.page.locator(selector)
             if node.count() > 0 and node.first.is_visible():
                 node.first.click()
@@ -236,7 +291,6 @@ class PageController:
         if videos.count() < 1:
             raise PageControlError("No latest video container could be located")
         return videos.last.locator("xpath=ancestor-or-self::*[1]")
-
 
     def explicit_failure_messages(self) -> list[str]:
         """Collect explicit generation failure messages from visible UI text only."""
