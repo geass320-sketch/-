@@ -237,6 +237,32 @@ class PageController:
             raise PageControlError("No latest video container could be located")
         return videos.last.locator("xpath=ancestor-or-self::*[1]")
 
+
+    def explicit_failure_messages(self) -> list[str]:
+        """Collect explicit generation failure messages from visible UI text only."""
+        messages: list[str] = []
+        candidates = self.toast_messages() + self.form_errors()
+
+        cards = self.page.locator(self._sel("latest_video_card", self.config.selectors.latest_video_card))
+        if cards.count() > 0:
+            for idx in range(min(cards.count(), 3)):
+                txt = cards.nth(idx).inner_text().strip()
+                if txt:
+                    candidates.append(txt)
+
+        for text in candidates:
+            lowered = text.lower()
+            if any(keyword.lower() in lowered for keyword in self.config.explicit_failure_keywords):
+                messages.append(text)
+
+        dedup: list[str] = []
+        seen: set[str] = set()
+        for msg in messages:
+            if msg not in seen:
+                seen.add(msg)
+                dedup.append(msg)
+        return dedup
+
     def has_zero_duration_marker(self, src_hint: str | None = None) -> bool:
         """Detect placeholder cards showing 00:00 duration."""
         container = self.latest_video_container(src_hint=src_hint)

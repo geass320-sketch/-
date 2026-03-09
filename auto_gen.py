@@ -114,6 +114,7 @@ def _collect_diagnostics(
         "new_card_count": new_card_count,
         "toast": controller.toast_messages(),
         "form_errors": controller.form_errors(),
+        "explicit_failures": controller.explicit_failure_messages(),
     }
     return json.dumps(payload, ensure_ascii=False)
 
@@ -127,6 +128,8 @@ def _wait_for_trigger_ack(
     deadline = time.time() + timeout_seconds
     trigger_keywords = ("生成中", "排队", "处理中", "queue", "generating", "processing")
     while time.time() < deadline:
+        if controller.explicit_failure_messages():
+            return False
         if controller.has_generate_busy_indicator():
             return True
         if controller.card_count() > old_card_count:
@@ -152,6 +155,9 @@ def _wait_for_completed_video(
     last_error = "Timed out waiting for completed video metadata"
     while time.time() < deadline:
         time.sleep(poll_interval_seconds)
+        explicit_failures = controller.explicit_failure_messages()
+        if explicit_failures:
+            raise PipelineError(f"检测到页面明确失败提示: {explicit_failures}")
         try:
             metadata = inspector.latest_metadata()
         except VideoInspectionError as exc:
@@ -173,7 +179,7 @@ def _wait_for_completed_video(
             return metadata
         last_error = result.reason
 
-    raise PipelineError(last_error)
+    raise PipelineError(f"{last_error}; 页面未检测到明确失败提示")
 
 
 def _download_with_fallback(
@@ -306,7 +312,10 @@ def run_single_generation(
                     old_card_count=old_card_count,
                     new_card_count=controller.card_count(),
                 )
-                raise PipelineError(f"未检测到生成触发成功（可能没点到或被遮挡）: {diagnostics}")
+                explicit = controller.explicit_failure_messages()
+                if explicit:
+                    raise PipelineError(f"检测到页面明确失败提示: {explicit}; diagnostics={diagnostics}")
+                raise PipelineError(f"未检测到生成触发成功，且页面未出现明确失败提示: {diagnostics}")
 
         metadata = _wait_for_completed_video(
             inspector=inspector,

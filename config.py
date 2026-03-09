@@ -57,5 +57,15 @@ class PipelineConfig:
         "loading",
         "pending",
     )
+    explicit_failure_keywords: tuple[str, ...] = (
+        "审核未通过",
+        "生成失败",
+        "网络异常",
+        "网络超时",
+        "请稍后重试",
+        "failed",
+        "error",
+        "denied",
+    )
     selectors: SeedanceSelectors = field(default_factory=SeedanceSelectors)
     thresholds: ValidationThresholds = field(default_factory=ValidationThresholds)
