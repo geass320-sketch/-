@@ -236,6 +236,7 @@ def run_single_generation(
     request: GenerationRequest,
     task_id: int,
     previous_video_src: str | None = None,
+    selector_check_only: bool = False,
 ) -> GenerationOutput:
     """Run one validated generation task and return structured output."""
     plan_id = f"plan-{task_id}-{uuid4().hex[:8]}"
@@ -256,8 +257,14 @@ def run_single_generation(
         validator = VideoValidator(config.thresholds)
 
         controller.navigate()
-        controller.preflight_selectors()
+        preflight_report = controller.preflight_selectors()
+        logging.info("[plan=%s] preflight_report=%s", plan_id, json.dumps(preflight_report, ensure_ascii=False))
         mode_label = controller.current_mode_label()
+
+        if selector_check_only:
+            browser.close()
+            ok_path = config.output_dir / f"task_{task_id}_selector_check.ok"
+            return GenerationOutput(task_id=task_id, video_src="selector-check-only", download_path=ok_path)
 
         controller.set_prompt_with_verification(plan.compiled_prompt)
         controller.ensure_option_selected("model", request.model)
@@ -342,6 +349,7 @@ def run_pipeline(
     previous_video_src: str | None = None,
     count: int = 1,
     concurrency: int = 1,
+    selector_check_only: bool = False,
 ) -> list[GenerationOutput]:
     """Run one or many generation tasks and return only when all complete."""
     if count < 1:
@@ -358,6 +366,7 @@ def run_pipeline(
                 replace(request),
                 task_id,
                 previous_video_src,
+                selector_check_only,
             ): task_id
             for task_id in range(1, count + 1)
         }
@@ -389,6 +398,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default="downloads")
     parser.add_argument("--count", type=int, default=1)
     parser.add_argument("--concurrency", type=int, default=1)
+    parser.add_argument("--selector-self-check", action="store_true", help="Only run preflight selector detection and exit")
     return parser.parse_args()
 
 
@@ -420,6 +430,7 @@ def main() -> None:
         previous_video_src=args.previous_video_src,
         count=args.count,
         concurrency=args.concurrency,
+        selector_check_only=args.selector_self_check,
     )
     print(json.dumps([{"task_id": o.task_id, "video_src": o.video_src, "download_path": str(o.download_path)} for o in outputs], ensure_ascii=False))
 

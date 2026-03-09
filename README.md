@@ -42,6 +42,21 @@ python auto_gen.py \
 2. 故意改错 `generate_button`，应在 preflight 阶段失败；
 3. 恢复后再跑正式任务。
 
+快速自检命令（只做选择器探测，不触发生成）：
+
+```bash
+python auto_gen.py \
+  --base-url "https://seedance.example.com/create" \
+  --cookies ./cookies.json \
+  --prompt "selector-check" \
+  --model "Seedance 2.0" \
+  --ratio "16:9" \
+  --duration "5s" \
+  --selector-self-check
+```
+
+日志会输出 `preflight_report`，包含每个候选 selector 的 count/visible，可直接定位是哪个失效。
+
 ## 全能参考模式说明
 
 - 全能参考 **不强制上传图片**。

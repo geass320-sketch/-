@@ -23,43 +23,107 @@ class PageController:
     def __init__(self, page: Page, config: PipelineConfig) -> None:
         self.page = page
         self.config = config
+        self._resolved: dict[str, str] = {}
+        self._preflight_report: dict[str, dict[str, object]] = {}
 
     def navigate(self) -> None:
         """Open Seedance page and wait for prompt input readiness."""
         self.page.goto(self.config.base_url, wait_until="domcontentloaded", timeout=self.config.default_timeout_ms)
         self.page.locator(self.config.selectors.prompt_textarea).first.wait_for(timeout=self.config.default_timeout_ms)
 
-    def preflight_selectors(self) -> None:
-        """Ensure critical selectors are present and visible before generation."""
-        checks = [
-            ("prompt_textarea", self.config.selectors.prompt_textarea, True),
-            ("mode_tab", self.config.selectors.mode_tab, False),
-            ("model_dropdown", self.config.selectors.model_dropdown, True),
-            ("ratio_dropdown", self.config.selectors.ratio_dropdown, True),
-            ("duration_dropdown", self.config.selectors.duration_dropdown, True),
-            ("upload_input", self.config.selectors.upload_input, False),
-            ("generate_button", self.config.selectors.generate_button, True),
-            ("latest_video", self.config.selectors.latest_video, False),
-        ]
-        for label, selector, exact_one in checks:
-            self._assert_selector(label=label, selector=selector, exact_one=exact_one)
+    def preflight_selectors(self) -> dict[str, dict[str, object]]:
+        """Resolve selectors from candidate lists and validate presence/visibility."""
+        requirements = {
+            "prompt_textarea": (True, [
+                self.config.selectors.prompt_textarea,
+                "textarea[data-testid='prompt-input']",
+                "[contenteditable='true'][data-testid*='prompt']",
+            ]),
+            "mode_tab": (False, [
+                self.config.selectors.mode_tab,
+                "[data-testid*='mode'] [role='tab']",
+                "button[role='tab']",
+            ]),
+            "model_dropdown": (True, [
+                self.config.selectors.model_dropdown,
+                "[data-testid*='model']",
+                "button[aria-label*='模型'], button[aria-label*='Model']",
+            ]),
+            "ratio_dropdown": (True, [
+                self.config.selectors.ratio_dropdown,
+                "[data-testid*='ratio']",
+                "button[aria-label*='比例'], button[aria-label*='Ratio']",
+            ]),
+            "duration_dropdown": (True, [
+                self.config.selectors.duration_dropdown,
+                "[data-testid*='duration']",
+                "button[aria-label*='时长'], button[aria-label*='Duration']",
+            ]),
+            "upload_input": (False, [
+                self.config.selectors.upload_input,
+                "input[type='file'][accept*='image']",
+            ]),
+            "generate_button": (True, [
+                self.config.selectors.generate_button,
+                "button[data-testid*='generate']",
+                "button:has-text('立即生成'), button:has-text('生成视频')",
+            ]),
+            "latest_video": (False, [
+                self.config.selectors.latest_video,
+                "[data-testid*='video'] video",
+            ]),
+            "latest_video_card": (False, [
+                self.config.selectors.latest_video_card,
+                "[data-testid*='card']",
+                ".card",
+            ]),
+            "download_button": (False, [
+                self.config.selectors.download_button,
+                "[data-testid*='download']",
+                "a[href*='.mp4']",
+            ]),
+        }
 
-    def _assert_selector(self, label: str, selector: str, exact_one: bool) -> None:
-        locator = self.page.locator(selector)
-        count = locator.count()
-        if exact_one and count != 1:
-            raise PreflightError(f"Preflight failed: selector '{label}' expected count=1, got {count}: {selector}")
-        if not exact_one and count < 1:
-            raise PreflightError(f"Preflight failed: selector '{label}' expected count>=1, got 0: {selector}")
-        if sum(1 for idx in range(count) if locator.nth(idx).is_visible()) < 1:
-            raise PreflightError(f"Preflight failed: selector '{label}' has no visible elements: {selector}")
+        report: dict[str, dict[str, object]] = {}
+        for label, (exact_one, candidates) in requirements.items():
+            resolved, info = self._resolve_selector(candidates=candidates, exact_one=exact_one)
+            report[label] = info
+            if resolved is None:
+                self._preflight_report = report
+                raise PreflightError(f"Preflight failed: {label} no candidate matched. report={report}")
+            self._resolved[label] = resolved
+
+        self._preflight_report = report
+        return report
+
+    def _resolve_selector(self, candidates: list[str], exact_one: bool) -> tuple[str | None, dict[str, object]]:
+        stats: list[dict[str, object]] = []
+        for selector in candidates:
+            locator = self.page.locator(selector)
+            count = locator.count()
+            visible = sum(1 for idx in range(count) if locator.nth(idx).is_visible())
+            stats.append({"selector": selector, "count": count, "visible": visible})
+            if exact_one:
+                if count == 1 and visible >= 1:
+                    return selector, {"selected": selector, "candidates": stats}
+            else:
+                if count >= 1 and visible >= 1:
+                    return selector, {"selected": selector, "candidates": stats}
+        return None, {"selected": None, "candidates": stats}
+
+    def preflight_report(self) -> dict[str, dict[str, object]]:
+        """Return latest preflight report for debugging."""
+        return self._preflight_report
+
+    def _sel(self, label: str, fallback: str) -> str:
+        return self._resolved.get(label, fallback)
 
     def current_mode_label(self) -> str:
         """Return currently selected mode text from UI when available."""
         selected = self.page.locator(self.config.selectors.selected_mode)
         if selected.count() > 0:
             return selected.first.inner_text().strip()
-        tabs = self.page.locator(self.config.selectors.mode_tab)
+        tabs = self.page.locator(self._sel("mode_tab", self.config.selectors.mode_tab))
         if tabs.count() > 0:
             return tabs.first.inner_text().strip()
         return "unknown"
@@ -68,7 +132,7 @@ class PageController:
         """Fill prompt and verify read-back value to avoid accidental generation."""
         if not prompt.strip():
             raise PageControlError("Prompt is empty; generation is blocked")
-        field = self.page.locator(self.config.selectors.prompt_textarea).first
+        field = self.page.locator(self._sel("prompt_textarea", self.config.selectors.prompt_textarea)).first
         field.fill(prompt)
         if field.input_value().strip() != prompt.strip():
             raise PageControlError("Prompt writeback verification failed")
@@ -76,9 +140,9 @@ class PageController:
     def ensure_option_selected(self, label: str, value: str) -> None:
         """Select model/ratio/duration with stable selectors and verify selection."""
         mapping = {
-            "model": self.config.selectors.model_dropdown,
-            "ratio": self.config.selectors.ratio_dropdown,
-            "duration": self.config.selectors.duration_dropdown,
+            "model": self._sel("model_dropdown", self.config.selectors.model_dropdown),
+            "ratio": self._sel("ratio_dropdown", self.config.selectors.ratio_dropdown),
+            "duration": self._sel("duration_dropdown", self.config.selectors.duration_dropdown),
         }
         selector = mapping.get(label)
         if selector is None:
@@ -110,18 +174,18 @@ class PageController:
         for path in paths:
             if not path.exists() or path.stat().st_size <= 0:
                 raise PageControlError(f"当前缺少可上传的本地文件路径/素材下载失败: {path}")
-        input_node = self.page.locator(self.config.selectors.upload_input).first
+        input_node = self.page.locator(self._sel("upload_input", self.config.selectors.upload_input)).first
         input_node.set_input_files([str(path) for path in paths])
         marker = self.page.locator(self.config.selectors.uploaded_asset_marker)
         return marker.count() > 0
 
     def click_generate(self) -> None:
         """Click generate button."""
-        self.page.locator(self.config.selectors.generate_button).first.click()
+        self.page.locator(self._sel("generate_button", self.config.selectors.generate_button)).first.click()
 
     def ensure_generate_clickable(self) -> None:
         """Try to make generate button interactable for retry clicks."""
-        button = self.page.locator(self.config.selectors.generate_button).first
+        button = self.page.locator(self._sel("generate_button", self.config.selectors.generate_button)).first
         button.scroll_into_view_if_needed()
         for selector in ("button:has-text('关闭')", "button:has-text('稍后')", "[aria-label='Close']", ".guide-close"):
             node = self.page.locator(selector)
@@ -150,8 +214,8 @@ class PageController:
 
     def card_count(self) -> int:
         """Return number of visible video cards."""
-        cards = self.page.locator(self.config.selectors.latest_video_card)
-        return cards.count() if cards.count() > 0 else self.page.locator(self.config.selectors.latest_video).count()
+        cards = self.page.locator(self._sel("latest_video_card", self.config.selectors.latest_video_card))
+        return cards.count() if cards.count() > 0 else self.page.locator(self._sel("latest_video", self.config.selectors.latest_video)).count()
 
     def has_generate_busy_indicator(self) -> bool:
         """Check whether generate button enters busy state."""
@@ -159,14 +223,16 @@ class PageController:
 
     def latest_video_container(self, src_hint: str | None = None) -> Locator:
         """Return video container optionally matched by src hint."""
-        cards = self.page.locator(self.config.selectors.latest_video_card)
+        card_selector = self._sel("latest_video_card", self.config.selectors.latest_video_card)
+        video_selector = self._sel("latest_video", self.config.selectors.latest_video)
+        cards = self.page.locator(card_selector)
         if src_hint and cards.count() > 0:
             matched = cards.filter(has=self.page.locator(f"video[src*='{src_hint}']"))
             if matched.count() > 0:
                 return matched.first
         if cards.count() > 0:
             return cards.last
-        videos = self.page.locator(self.config.selectors.latest_video)
+        videos = self.page.locator(video_selector)
         if videos.count() < 1:
             raise PageControlError("No latest video container could be located")
         return videos.last.locator("xpath=ancestor-or-self::*[1]")
@@ -183,7 +249,7 @@ class PageController:
     def click_scoped_download(self, src_hint: str | None = None) -> None:
         """Click download button within latest/new video scope only."""
         container = self.latest_video_container(src_hint=src_hint)
-        scoped_button = container.locator(self.config.selectors.download_button)
+        scoped_button = container.locator(self._sel("download_button", self.config.selectors.download_button))
         if scoped_button.count() < 1:
             raise PageControlError("Scoped download button not found in latest video container")
         scoped_button.first.click()
