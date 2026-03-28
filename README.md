@@ -72,3 +72,13 @@ If both fail, it raises an explicit upload error indicating likely anti-automati
 If you need to run multiple commands in legacy PowerShell and `&&` fails, put them in a `.bat` file or run commands in separate lines.
 
 `auto_gen.py` remains the main entrypoint for external orchestrators and only downloads videos after validation gates pass.
+
+
+## Release checklist
+
+Before publishing, run:
+
+```bash
+python -m compileall auto_gen.py config.py page_controller.py models.py seedance_planner.py video_inspector.py validator.py
+python -m unittest tests/test_local_storage_payload.py
+```

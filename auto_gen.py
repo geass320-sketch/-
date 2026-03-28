@@ -8,9 +8,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
 from pathlib import Path
+from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright
 
-from playwright.sync_api import BrowserContext, Page, sync_playwright
-
+from auth_utils import AuthPayloadError, normalize_local_storage_payload
 from config import PipelineConfig
 from frame_tools import ensure_frame_exists
 from models import GenerationMode, GenerationOutput, GenerationRequest
@@ -39,8 +39,10 @@ def _set_local_storage(page: Page, local_storage_path: Path) -> None:
     if not local_storage_path.exists():
         raise PipelineError(f"Local storage file not found: {local_storage_path}")
     payload = json.loads(local_storage_path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise PipelineError("Local storage file must contain a JSON object")
+    try:
+        normalized = normalize_local_storage_payload(payload)
+    except AuthPayloadError as exc:
+        raise PipelineError(str(exc)) from exc
     page.add_init_script(
         """
         (entries) => {
@@ -49,11 +51,11 @@ def _set_local_storage(page: Page, local_storage_path: Path) -> None:
             }
         }
         """,
-        payload,
+        normalized,
     )
 
 
-def _build_context(playwright, config: PipelineConfig):
+def _build_context(playwright, config: PipelineConfig) -> tuple[Browser, BrowserContext]:
     """Create browser + context with storage-state first and cookie fallback."""
     browser = playwright.chromium.launch(headless=True)
     context_kwargs = {"accept_downloads": True}
@@ -102,45 +104,47 @@ def run_single_generation(
 
     with sync_playwright() as p:
         browser, context = _build_context(p, config)
-        page = context.new_page()
-        if config.local_storage_path is not None:
-            _set_local_storage(page, config.local_storage_path)
+        try:
+            page = context.new_page()
+            if config.local_storage_path is not None:
+                _set_local_storage(page, config.local_storage_path)
 
-        controller = PageController(page=page, config=config)
-        inspector = VideoInspector(page=page, config=config)
-        validator = VideoValidator(config.thresholds)
+            controller = PageController(page=page, config=config)
+            inspector = VideoInspector(page=page, config=config)
+            validator = VideoValidator(config.thresholds)
 
-        controller.navigate()
-        controller.set_prompt_with_verification(plan.compiled_prompt)
-        controller.ensure_option_selected("model", request.model)
-        controller.ensure_option_selected("ratio", request.ratio)
-        controller.ensure_option_selected("duration", request.duration)
-        controller.upload_images(plan.required_images)
-        controller.click_generate()
+            controller.navigate()
+            controller.set_prompt_with_verification(plan.compiled_prompt)
+            controller.ensure_option_selected("model", request.model)
+            controller.ensure_option_selected("ratio", request.ratio)
+            controller.ensure_option_selected("duration", request.duration)
+            controller.upload_images(plan.required_images)
+            controller.click_generate()
 
-        deadline = time.time() + config.max_wait_seconds
-        last_error = "Timed out waiting for valid generated video"
-        while time.time() < deadline:
-            time.sleep(config.poll_interval_seconds)
-            try:
-                metadata = inspector.latest_metadata()
-            except VideoInspectionError as exc:
-                last_error = str(exc)
-                continue
+            deadline = time.time() + config.max_wait_seconds
+            last_error = "Timed out waiting for valid generated video"
+            while time.time() < deadline:
+                time.sleep(config.poll_interval_seconds)
+                try:
+                    metadata = inspector.latest_metadata()
+                except VideoInspectionError as exc:
+                    last_error = str(exc)
+                    continue
 
-            result = validator.validate(metadata, previous_video_src)
-            if result.ok:
-                with page.expect_download(timeout=config.default_timeout_ms) as dl:
-                    controller.trigger_download()
-                download = dl.value
-                save_path = _download_target_path(config.output_dir, download.suggested_filename, task_id)
-                download.save_as(str(save_path))
-                browser.close()
-                return GenerationOutput(task_id=task_id, video_src=metadata.src, download_path=save_path)
-            last_error = result.reason
+                result = validator.validate(metadata, previous_video_src)
+                if result.ok:
+                    with page.expect_download(timeout=config.default_timeout_ms) as dl:
+                        controller.trigger_download()
+                    download = dl.value
+                    save_path = _download_target_path(config.output_dir, download.suggested_filename, task_id)
+                    download.save_as(str(save_path))
+                    return GenerationOutput(task_id=task_id, video_src=metadata.src, download_path=save_path)
+                last_error = result.reason
 
-        browser.close()
-        raise PipelineError(f"Task {task_id} failed: {last_error}")
+            raise PipelineError(f"Task {task_id} failed: {last_error}")
+        finally:
+            context.close()
+            browser.close()
 
 
 def run_pipeline(
