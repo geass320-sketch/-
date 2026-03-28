@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from playwright.sync_api import Page
+from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
 
 from config import PipelineConfig
 
@@ -54,15 +54,69 @@ class PageController:
         if value.strip().lower() not in selected_text:
             raise PageControlError(f"{label} selection verification failed for value '{value}'")
 
+    def _verify_upload_success(self, minimum_expected: int) -> bool:
+        """Check both input files and rendered previews to detect upload success."""
+        files_seen = self.page.evaluate(
+            """
+            (selector) => {
+                const nodes = Array.from(document.querySelectorAll(selector));
+                return nodes.reduce((sum, n) => sum + (n.files ? n.files.length : 0), 0);
+            }
+            """,
+            self.config.selectors.upload_input,
+        )
+        preview_count = self.page.locator(self.config.selectors.uploaded_preview_items).count()
+        return int(files_seen) >= minimum_expected or int(preview_count) >= minimum_expected
+
+    def _upload_by_input(self, paths: tuple[Path, ...]) -> bool:
+        """Attempt direct set_input_files and synthesize events for JS-heavy UIs."""
+        input_node = self.page.locator(self.config.selectors.upload_input).first
+        input_node.set_input_files([str(path) for path in paths])
+        self.page.evaluate(
+            """
+            (selector) => {
+                const node = document.querySelector(selector);
+                if (!node) return;
+                node.dispatchEvent(new Event('input', { bubbles: true }));
+                node.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            """,
+            self.config.selectors.upload_input,
+        )
+        self.page.wait_for_timeout(600)
+        return self._verify_upload_success(len(paths))
+
+    def _upload_by_file_chooser(self, paths: tuple[Path, ...]) -> bool:
+        """Attempt click-triggered file chooser path for hijacked input flows."""
+        triggers = self.page.locator(self.config.selectors.upload_triggers)
+        if triggers.count() == 0:
+            return False
+        try:
+            with self.page.expect_file_chooser(timeout=3_000) as chooser_info:
+                triggers.first.click()
+            chooser = chooser_info.value
+            chooser.set_files([str(path) for path in paths])
+        except PlaywrightTimeoutError:
+            return False
+        self.page.wait_for_timeout(800)
+        return self._verify_upload_success(len(paths))
+
     def upload_images(self, paths: tuple[Path, ...]) -> None:
-        """Upload required continuation images and verify count."""
+        """Upload required continuation images with multi-strategy fallback."""
         if not paths:
             return
         for path in paths:
             if not path.exists():
                 raise PageControlError(f"Required image does not exist: {path}")
-        input_node = self.page.locator(self.config.selectors.upload_input).first
-        input_node.set_input_files([str(path) for path in paths])
+
+        if self._upload_by_input(paths):
+            return
+        if self._upload_by_file_chooser(paths):
+            return
+        raise PageControlError(
+            "Upload failed after both direct input and file-chooser strategies; "
+            "likely due to page-side anti-automation upload checks"
+        )
 
     def click_generate(self) -> None:
         """Click generate button."""

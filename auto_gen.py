@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
 from pathlib import Path
 
-from playwright.sync_api import BrowserContext, sync_playwright
+from playwright.sync_api import BrowserContext, Page, sync_playwright
 
 from config import PipelineConfig
 from frame_tools import ensure_frame_exists
@@ -32,6 +32,39 @@ def _load_cookies(context: BrowserContext, cookies_path: Path) -> None:
     if not isinstance(data, list):
         raise PipelineError("Cookie file must contain a JSON list")
     context.add_cookies(data)
+
+
+def _set_local_storage(page: Page, local_storage_path: Path) -> None:
+    """Inject localStorage values before navigation-driven auth checks."""
+    if not local_storage_path.exists():
+        raise PipelineError(f"Local storage file not found: {local_storage_path}")
+    payload = json.loads(local_storage_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise PipelineError("Local storage file must contain a JSON object")
+    page.add_init_script(
+        """
+        (entries) => {
+            for (const [k, v] of Object.entries(entries)) {
+                localStorage.setItem(k, String(v));
+            }
+        }
+        """,
+        payload,
+    )
+
+
+def _build_context(playwright, config: PipelineConfig):
+    """Create browser + context with storage-state first and cookie fallback."""
+    browser = playwright.chromium.launch(headless=True)
+    context_kwargs = {"accept_downloads": True}
+    if config.storage_state_path is not None:
+        if not config.storage_state_path.exists():
+            raise PipelineError(f"Storage state file not found: {config.storage_state_path}")
+        context_kwargs["storage_state"] = str(config.storage_state_path)
+    context = browser.new_context(**context_kwargs)
+    if config.cookies_path is not None:
+        _load_cookies(context, config.cookies_path)
+    return browser, context
 
 
 def _validate_local_inputs(request: GenerationRequest, compiled_prompt: str) -> None:
@@ -68,10 +101,10 @@ def run_single_generation(
     _validate_local_inputs(request, plan.compiled_prompt)
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(accept_downloads=True)
-        _load_cookies(context, config.cookies_path)
+        browser, context = _build_context(p, config)
         page = context.new_page()
+        if config.local_storage_path is not None:
+            _set_local_storage(page, config.local_storage_path)
 
         controller = PageController(page=page, config=config)
         inspector = VideoInspector(page=page, config=config)
@@ -149,7 +182,9 @@ def run_pipeline(
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Jimeng web auto generation pipeline")
     parser.add_argument("--base-url", required=True)
-    parser.add_argument("--cookies", required=True)
+    parser.add_argument("--cookies", help="JSON list of cookies (optional if storage-state/local-storage is used)")
+    parser.add_argument("--storage-state", help="Playwright storage_state JSON path")
+    parser.add_argument("--local-storage", help="JSON object for localStorage token injection")
     parser.add_argument("--prompt", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--ratio", required=True)
@@ -168,6 +203,9 @@ def _parse_args() -> argparse.Namespace:
 def main() -> None:
     """CLI entrypoint for external orchestrators."""
     args = _parse_args()
+    if not args.cookies and not args.storage_state and not args.local_storage:
+        raise PipelineError("At least one auth source is required: --cookies, --storage-state, or --local-storage")
+
     request = GenerationRequest(
         prompt=args.prompt,
         model=args.model,
@@ -180,7 +218,9 @@ def main() -> None:
     )
     config = PipelineConfig(
         base_url=args.base_url,
-        cookies_path=Path(args.cookies),
+        cookies_path=Path(args.cookies) if args.cookies else None,
+        storage_state_path=Path(args.storage_state) if args.storage_state else None,
+        local_storage_path=Path(args.local_storage) if args.local_storage else None,
         output_dir=Path(args.output_dir),
     )
     outputs = run_pipeline(
