@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 class GenerationMode(str, Enum):
-    """Supported Seedance generation modes."""
+    """Supported Jimeng web generation modes."""
 
     TEXT2VIDEO = "text2video"
     FIRST_FRAME = "first_frame"
@@ -32,7 +32,7 @@ class GenerationRequest:
 
 @dataclass(frozen=True)
 class PromptParts:
-    """Structured prompt segments for Seedance-oriented prompting."""
+    """Structured prompt segments for Jimeng-oriented prompting."""
 
     main_prompt: str
     continuity_prompt: str

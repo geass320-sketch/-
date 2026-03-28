@@ -1,4 +1,4 @@
-"""Main entrypoint for Seedance generation automation pipeline."""
+"""Main entrypoint for Jimeng web generation automation pipeline."""
 
 from __future__ import annotations
 
@@ -8,14 +8,14 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
 from pathlib import Path
+from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright
 
-from playwright.sync_api import BrowserContext, sync_playwright
-
+from auth_utils import AuthPayloadError, normalize_local_storage_payload
 from config import PipelineConfig
 from frame_tools import ensure_frame_exists
 from models import GenerationMode, GenerationOutput, GenerationRequest
 from page_controller import PageController
-from seedance_planner import SeedancePlanner
+from seedance_planner import JimengPlanner
 from validator import VideoValidator
 from video_inspector import VideoInspectionError, VideoInspector
 
@@ -32,6 +32,41 @@ def _load_cookies(context: BrowserContext, cookies_path: Path) -> None:
     if not isinstance(data, list):
         raise PipelineError("Cookie file must contain a JSON list")
     context.add_cookies(data)
+
+
+def _set_local_storage(page: Page, local_storage_path: Path) -> None:
+    """Inject localStorage values before navigation-driven auth checks."""
+    if not local_storage_path.exists():
+        raise PipelineError(f"Local storage file not found: {local_storage_path}")
+    payload = json.loads(local_storage_path.read_text(encoding="utf-8"))
+    try:
+        normalized = normalize_local_storage_payload(payload)
+    except AuthPayloadError as exc:
+        raise PipelineError(str(exc)) from exc
+    page.add_init_script(
+        """
+        (entries) => {
+            for (const [k, v] of Object.entries(entries)) {
+                localStorage.setItem(k, String(v));
+            }
+        }
+        """,
+        normalized,
+    )
+
+
+def _build_context(playwright, config: PipelineConfig) -> tuple[Browser, BrowserContext]:
+    """Create browser + context with storage-state first and cookie fallback."""
+    browser = playwright.chromium.launch(headless=True)
+    context_kwargs = {"accept_downloads": True}
+    if config.storage_state_path is not None:
+        if not config.storage_state_path.exists():
+            raise PipelineError(f"Storage state file not found: {config.storage_state_path}")
+        context_kwargs["storage_state"] = str(config.storage_state_path)
+    context = browser.new_context(**context_kwargs)
+    if config.cookies_path is not None:
+        _load_cookies(context, config.cookies_path)
+    return browser, context
 
 
 def _validate_local_inputs(request: GenerationRequest, compiled_prompt: str) -> None:
@@ -63,51 +98,53 @@ def run_single_generation(
     previous_video_src: str | None = None,
 ) -> GenerationOutput:
     """Run one validated generation task and return structured output."""
-    planner = SeedancePlanner()
+    planner = JimengPlanner()
     plan = planner.build_plan(request)
     _validate_local_inputs(request, plan.compiled_prompt)
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(accept_downloads=True)
-        _load_cookies(context, config.cookies_path)
-        page = context.new_page()
+        browser, context = _build_context(p, config)
+        try:
+            page = context.new_page()
+            if config.local_storage_path is not None:
+                _set_local_storage(page, config.local_storage_path)
 
-        controller = PageController(page=page, config=config)
-        inspector = VideoInspector(page=page, config=config)
-        validator = VideoValidator(config.thresholds)
+            controller = PageController(page=page, config=config)
+            inspector = VideoInspector(page=page, config=config)
+            validator = VideoValidator(config.thresholds)
 
-        controller.navigate()
-        controller.set_prompt_with_verification(plan.compiled_prompt)
-        controller.ensure_option_selected("model", request.model)
-        controller.ensure_option_selected("ratio", request.ratio)
-        controller.ensure_option_selected("duration", request.duration)
-        controller.upload_images(plan.required_images)
-        controller.click_generate()
+            controller.navigate()
+            controller.set_prompt_with_verification(plan.compiled_prompt)
+            controller.ensure_option_selected("model", request.model)
+            controller.ensure_option_selected("ratio", request.ratio)
+            controller.ensure_option_selected("duration", request.duration)
+            controller.upload_images(plan.required_images)
+            controller.click_generate()
 
-        deadline = time.time() + config.max_wait_seconds
-        last_error = "Timed out waiting for valid generated video"
-        while time.time() < deadline:
-            time.sleep(config.poll_interval_seconds)
-            try:
-                metadata = inspector.latest_metadata()
-            except VideoInspectionError as exc:
-                last_error = str(exc)
-                continue
+            deadline = time.time() + config.max_wait_seconds
+            last_error = "Timed out waiting for valid generated video"
+            while time.time() < deadline:
+                time.sleep(config.poll_interval_seconds)
+                try:
+                    metadata = inspector.latest_metadata()
+                except VideoInspectionError as exc:
+                    last_error = str(exc)
+                    continue
 
-            result = validator.validate(metadata, previous_video_src)
-            if result.ok:
-                with page.expect_download(timeout=config.default_timeout_ms) as dl:
-                    controller.trigger_download()
-                download = dl.value
-                save_path = _download_target_path(config.output_dir, download.suggested_filename, task_id)
-                download.save_as(str(save_path))
-                browser.close()
-                return GenerationOutput(task_id=task_id, video_src=metadata.src, download_path=save_path)
-            last_error = result.reason
+                result = validator.validate(metadata, previous_video_src)
+                if result.ok:
+                    with page.expect_download(timeout=config.default_timeout_ms) as dl:
+                        controller.trigger_download()
+                    download = dl.value
+                    save_path = _download_target_path(config.output_dir, download.suggested_filename, task_id)
+                    download.save_as(str(save_path))
+                    return GenerationOutput(task_id=task_id, video_src=metadata.src, download_path=save_path)
+                last_error = result.reason
 
-        browser.close()
-        raise PipelineError(f"Task {task_id} failed: {last_error}")
+            raise PipelineError(f"Task {task_id} failed: {last_error}")
+        finally:
+            context.close()
+            browser.close()
 
 
 def run_pipeline(
@@ -147,9 +184,11 @@ def run_pipeline(
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Seedance auto generation pipeline")
+    parser = argparse.ArgumentParser(description="Jimeng web auto generation pipeline")
     parser.add_argument("--base-url", required=True)
-    parser.add_argument("--cookies", required=True)
+    parser.add_argument("--cookies", help="JSON list of cookies (optional if storage-state/local-storage is used)")
+    parser.add_argument("--storage-state", help="Playwright storage_state JSON path")
+    parser.add_argument("--local-storage", help="JSON object for localStorage token injection")
     parser.add_argument("--prompt", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--ratio", required=True)
@@ -168,6 +207,9 @@ def _parse_args() -> argparse.Namespace:
 def main() -> None:
     """CLI entrypoint for external orchestrators."""
     args = _parse_args()
+    if not args.cookies and not args.storage_state and not args.local_storage:
+        raise PipelineError("At least one auth source is required: --cookies, --storage-state, or --local-storage")
+
     request = GenerationRequest(
         prompt=args.prompt,
         model=args.model,
@@ -180,7 +222,9 @@ def main() -> None:
     )
     config = PipelineConfig(
         base_url=args.base_url,
-        cookies_path=Path(args.cookies),
+        cookies_path=Path(args.cookies) if args.cookies else None,
+        storage_state_path=Path(args.storage_state) if args.storage_state else None,
+        local_storage_path=Path(args.local_storage) if args.local_storage else None,
         output_dir=Path(args.output_dir),
     )
     outputs = run_pipeline(
