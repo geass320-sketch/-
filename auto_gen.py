@@ -1,4 +1,4 @@
-"""Main entrypoint for Seedance generation automation pipeline."""
+"""Main entrypoint for Jimeng web generation automation pipeline."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from config import PipelineConfig
 from frame_tools import ensure_frame_exists
 from models import GenerationMode, GenerationOutput, GenerationRequest
 from page_controller import PageController
-from seedance_planner import SeedancePlanner
+from seedance_planner import JimengPlanner
 from validator import VideoValidator
 from video_inspector import VideoInspectionError, VideoInspector
 
@@ -63,7 +63,7 @@ def run_single_generation(
     previous_video_src: str | None = None,
 ) -> GenerationOutput:
     """Run one validated generation task and return structured output."""
-    planner = SeedancePlanner()
+    planner = JimengPlanner()
     plan = planner.build_plan(request)
     _validate_local_inputs(request, plan.compiled_prompt)
 
@@ -147,7 +147,7 @@ def run_pipeline(
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Seedance auto generation pipeline")
+    parser = argparse.ArgumentParser(description="Jimeng web auto generation pipeline")
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--cookies", required=True)
     parser.add_argument("--prompt", required=True)

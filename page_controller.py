@@ -1,4 +1,4 @@
-"""Safe page control helpers for Seedance Playwright automation."""
+"""Safe page control helpers for Jimeng web Playwright automation."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ class PageController:
         self.config = config
 
     def navigate(self) -> None:
-        """Open Seedance page and wait for prompt input readiness."""
+        """Open Jimeng web page and wait for prompt input readiness."""
         self.page.goto(self.config.base_url, wait_until="domcontentloaded", timeout=self.config.default_timeout_ms)
         self.page.locator(self.config.selectors.prompt_textarea).first.wait_for(timeout=self.config.default_timeout_ms)
 

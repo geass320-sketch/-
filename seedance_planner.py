@@ -11,8 +11,8 @@ class PlanningError(ValueError):
     """Raised when input cannot produce a safe generation plan."""
 
 
-class SeedancePlanner:
-    """Create a generation plan with structured prompt parts."""
+class JimengPlanner:
+    """Create a generation plan with structured prompt parts for Jimeng web."""
 
     def __init__(self) -> None:
         self._continuation = ContinuationEngine()
@@ -47,3 +47,7 @@ class SeedancePlanner:
             compiled_prompt=compiled,
             required_images=required_images,
         )
+
+
+class SeedancePlanner(JimengPlanner):
+    """Backward-compatible alias for older imports."""
