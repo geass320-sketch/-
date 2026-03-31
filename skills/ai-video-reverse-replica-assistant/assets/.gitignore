@@ -1,0 +1,6 @@
+# Generated locally by scripts; do not commit binary artifacts
+*.xlsx
+*.zip
+
+# Keep text-based preview artifacts versioned
+!*.svg

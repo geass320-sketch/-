@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AI Video Reverse Replica Output",
+  "type": "object",
+  "required": [
+    "analysis_report",
+    "character_sheet",
+    "script_reconstruction",
+    "story_structure",
+    "optimized_script",
+    "meta_prompts",
+    "replacement_guide",
+    "generation_package"
+  ],
+  "properties": {
+    "analysis_report": {
+      "type": "object",
+      "required": ["shots"],
+      "properties": {
+        "shots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["shot_id", "duration", "scene", "subject", "camera_motion", "prompt"],
+            "properties": {
+              "shot_id": {"type": "string"},
+              "duration": {"type": "number"},
+              "scene": {"type": "string"},
+              "subject": {"type": "string"},
+              "composition": {
+                "type": "object",
+                "properties": {
+                  "shot_size": {"type": "string", "enum": ["wide", "medium", "close", "extreme_close"]},
+                  "angle": {"type": "string", "enum": ["eye_level", "low", "high", "tilt"]},
+                  "framing": {"type": "string", "enum": ["center", "rule_of_thirds", "symmetry"]}
+                }
+              },
+              "camera_motion": {
+                "type": "object",
+                "required": ["type", "direction", "intensity"],
+                "properties": {
+                  "type": {"type": "string", "enum": ["push", "pull", "pan", "tilt", "track", "handheld"]},
+                  "direction": {"type": "string", "enum": ["horizontal", "vertical", "forward", "circular"]},
+                  "intensity": {"type": "integer", "minimum": 1, "maximum": 10}
+                }
+              },
+              "lighting": {"type": "string"},
+              "color": {"type": "string"},
+              "mood": {"type": "string"},
+              "prompt": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "character_sheet": {"type": "array"},
+    "script_reconstruction": {
+      "type": "object",
+      "required": ["scenes"],
+      "properties": {"scenes": {"type": "array"}}
+    },
+    "story_structure": {
+      "type": "object",
+      "required": ["setup", "conflict", "turning_point", "climax", "resolution"],
+      "properties": {
+        "setup": {"type": "string"},
+        "conflict": {"type": "string"},
+        "turning_point": {"type": "string"},
+        "climax": {"type": "string"},
+        "resolution": {"type": "string"},
+        "emotion_curve": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "optimized_script": {
+      "type": "object",
+      "required": ["modifications_applied", "logic_check", "updated_scenes"],
+      "properties": {
+        "modifications_applied": {"type": "array", "items": {"type": "string"}},
+        "logic_check": {
+          "type": "object",
+          "required": ["status", "notes"],
+          "properties": {
+            "status": {"type": "string", "enum": ["valid", "adjusted"]},
+            "notes": {"type": "string"}
+          }
+        },
+        "updated_scenes": {"type": "array"}
+      }
+    },
+    "meta_prompts": {"type": "array", "items": {"type": "string"}},
+    "replacement_guide": {"type": "array", "items": {"type": "string"}},
+    "generation_package": {
+      "type": "object",
+      "required": ["dreamina_prompt", "camera_parameters", "character_ref", "frame_guidance"],
+      "properties": {
+        "dreamina_prompt": {"type": "string"},
+        "camera_parameters": {
+          "type": "object",
+          "required": ["horizontal", "vertical", "zoom", "stability"],
+          "properties": {
+            "horizontal": {"type": "number"},
+            "vertical": {"type": "number"},
+            "zoom": {"type": "number"},
+            "stability": {"type": "string", "enum": ["low", "medium", "high"]}
+          }
+        },
+        "character_ref": {
+          "type": "object",
+          "required": ["appearance", "costume", "identity_tags", "consistency_rules"],
+          "properties": {
+            "appearance": {"type": "string"},
+            "costume": {"type": "string"},
+            "identity_tags": {"type": "array", "items": {"type": "string"}},
+            "consistency_rules": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "frame_guidance": {
+          "type": "object",
+          "required": ["start_frame", "end_frame", "transition_hint"],
+          "properties": {
+            "start_frame": {"type": "string"},
+            "end_frame": {"type": "string"},
+            "transition_hint": {"type": "string"}
+          }
+        }
+      }
+    }
+  }
+}
