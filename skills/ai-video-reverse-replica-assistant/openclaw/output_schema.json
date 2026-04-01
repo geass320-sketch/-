@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Native-first Video Reverse Analysis Output",
+  "type": "object",
+  "required": ["native_analysis", "generation_package"],
+  "properties": {
+    "native_analysis": {
+      "type": "object",
+      "required": ["sequences"],
+      "properties": {
+        "sequences": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["sequence_id", "narrative_function", "shots"],
+            "properties": {
+              "sequence_id": {"type": "string"},
+              "narrative_function": {
+                "type": "string",
+                "enum": ["setup", "conflict", "turning_point", "climax", "resolution"]
+              },
+              "shots": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "timestamp",
+                    "cut_type",
+                    "shot_scale",
+                    "camera_movement",
+                    "continuity_logic",
+                    "visual_description",
+                    "micro_motion",
+                    "sfx_layer",
+                    "emotion_pulse"
+                  ],
+                  "properties": {
+                    "timestamp": {"type": "string"},
+                    "cut_type": {"type": "string"},
+                    "shot_scale": {"type": "string"},
+                    "camera_movement": {"type": "string"},
+                    "continuity_logic": {"type": "string"},
+                    "visual_description": {"type": "string"},
+                    "micro_motion": {"type": "array", "items": {"type": "string"}},
+                    "sfx_layer": {"type": "array", "items": {"type": "string"}},
+                    "emotion_pulse": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "four_panel_export": {
+      "type": "object",
+      "required": ["enabled", "panel_units"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "panel_units": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["source_sequence_id", "panel_1_start", "panel_2_motion", "panel_3_turn", "panel_4_lock"],
+            "properties": {
+              "source_sequence_id": {"type": "string"},
+              "panel_1_start": {"type": "string"},
+              "panel_2_motion": {"type": "string"},
+              "panel_3_turn": {"type": "string"},
+              "panel_4_lock": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "generation_package": {
+      "type": "object",
+      "required": ["dreamina_prompt", "camera_parameters"],
+      "properties": {
+        "dreamina_prompt": {"type": "string"},
+        "camera_parameters": {
+          "type": "object",
+          "required": ["horizontal", "vertical", "zoom", "stability"],
+          "properties": {
+            "horizontal": {"type": "number"},
+            "vertical": {"type": "number"},
+            "zoom": {"type": "number"},
+            "stability": {"type": "string", "enum": ["low", "medium", "high"]}
+          }
+        }
+      }
+    }
+  }
+}

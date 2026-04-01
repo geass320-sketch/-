@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900">
+  <rect width="1600" height="900" fill="#ffffff"/>
+  <rect x="30" y="20" width="1540" height="70" fill="#1F4E78"/>
+  <text x="50" y="65" font-size="34" fill="white" font-family="Arial">Storyboard Excel Preview</text>
+  <text x="50" y="130" font-size="24" fill="#1F4E78" font-family="Arial">Sheet: 完整分镜表</text>
+
+  <rect x="50" y="160" width="1500" height="55" fill="#EAF2FB" stroke="#1F4E78"/>
+  <text x="60" y="195" font-size="18" fill="#1F4E78" font-family="Arial">镜号 | 时间 | 时长 | 出镜角色 | 画面内容 | 画面提示词(EN) | 文案/台词 | 镜头类型 | 功能</text>
+
+  <rect x="50" y="215" width="1500" height="85" fill="#ffffff" stroke="#CCCCCC"/>
+  <text x="60" y="265" font-size="16" fill="#222" font-family="Arial">1 | 00:00 | 2s | {角色A} | 雨夜霓虹街道回头观察追兵 | {角色A}, turns back while running... | 他们追上来了 | 中景 | 钩子</text>
+
+  <rect x="50" y="300" width="1500" height="85" fill="#ffffff" stroke="#CCCCCC"/>
+  <text x="60" y="350" font-size="16" fill="#222" font-family="Arial">2 | 00:02 | 3s | {角色A} | 冲入狭窄走廊镜头前推 | {角色A}, sprinting into narrow corridor... | （喘息声） | 近景 | 冲突</text>
+
+  <text x="50" y="450" font-size="22" fill="#1F4E78" font-family="Arial">Included Sheets</text>
+  <text x="50" y="490" font-size="18" fill="#222" font-family="Arial">角色设定表 / 完整分镜表 / 结构拆解 / 元提示词模板 / 验证测试 / 替换指南 / JSON结果</text>
+</svg>

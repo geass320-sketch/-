@@ -1,0 +1,42 @@
+api_version: openclaw.skill/v1
+kind: Skill
+metadata:
+  id: ai-video-reverse-replica-assistant
+  display_name: AI视频反推与复刻助手（原生优先）
+  version: 1.1.0
+  language: zh-CN
+  tags:
+    - video-analysis
+    - cut-based-analysis
+    - storyboard
+    - dreamina
+spec:
+  entrypoint: system_prompt.md
+  output_schema: output_schema.json
+  modes:
+    - replicate
+    - variation
+    - enhance
+  required_inputs:
+    - video_input.type
+    - video_input.value
+    - user_intent.mode
+  optional_inputs:
+    - user_intent.description
+    - analysis_preference.core_layer
+    - analysis_preference.need_four_panel_export
+    - edit_instruction.scene
+    - edit_instruction.character
+    - edit_instruction.style
+    - edit_instruction.action
+    - edit_instruction.emotion
+  deliverables:
+    - 原生镜头解析
+    - 连续性与节奏诊断
+    - 角色设定表
+    - 生成提示词与执行参数
+    - 四宫格导出（可选）
+    - JSON结果
+  compatibility:
+    upload_target: OpenClaw Skill Registry
+    runtime: llm-agent

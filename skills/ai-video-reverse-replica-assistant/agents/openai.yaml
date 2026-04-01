@@ -1,0 +1,5 @@
+version: 1
+interface:
+  display_name: AI视频反推与复刻助手（原生优先）
+  short_description: 先做原生剪辑分析，再可选四宫格导出用于生成
+  default_prompt: 请先按真实剪辑点做原生镜头解析，再输出连续性诊断与Dreamina执行参数；只有在需要生成时再导出四宫格。
