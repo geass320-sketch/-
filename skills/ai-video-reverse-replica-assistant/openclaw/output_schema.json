@@ -1,97 +1,81 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "AI Video Reverse Replica Output",
+  "title": "Native-first Video Reverse Analysis Output",
   "type": "object",
-  "required": [
-    "analysis_report",
-    "character_sheet",
-    "script_reconstruction",
-    "story_structure",
-    "optimized_script",
-    "meta_prompts",
-    "replacement_guide",
-    "generation_package"
-  ],
+  "required": ["native_analysis", "generation_package"],
   "properties": {
-    "analysis_report": {
+    "native_analysis": {
       "type": "object",
-      "required": ["shots"],
+      "required": ["sequences"],
       "properties": {
-        "shots": {
+        "sequences": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["shot_id", "duration", "scene", "subject", "camera_motion", "prompt"],
+            "required": ["sequence_id", "narrative_function", "shots"],
             "properties": {
-              "shot_id": {"type": "string"},
-              "duration": {"type": "number"},
-              "scene": {"type": "string"},
-              "subject": {"type": "string"},
-              "composition": {
-                "type": "object",
-                "properties": {
-                  "shot_size": {"type": "string", "enum": ["wide", "medium", "close", "extreme_close"]},
-                  "angle": {"type": "string", "enum": ["eye_level", "low", "high", "tilt"]},
-                  "framing": {"type": "string", "enum": ["center", "rule_of_thirds", "symmetry"]}
-                }
+              "sequence_id": {"type": "string"},
+              "narrative_function": {
+                "type": "string",
+                "enum": ["setup", "conflict", "turning_point", "climax", "resolution"]
               },
-              "camera_motion": {
-                "type": "object",
-                "required": ["type", "direction", "intensity"],
-                "properties": {
-                  "type": {"type": "string", "enum": ["push", "pull", "pan", "tilt", "track", "handheld"]},
-                  "direction": {"type": "string", "enum": ["horizontal", "vertical", "forward", "circular"]},
-                  "intensity": {"type": "integer", "minimum": 1, "maximum": 10}
+              "shots": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "timestamp",
+                    "cut_type",
+                    "shot_scale",
+                    "camera_movement",
+                    "continuity_logic",
+                    "visual_description",
+                    "micro_motion",
+                    "sfx_layer",
+                    "emotion_pulse"
+                  ],
+                  "properties": {
+                    "timestamp": {"type": "string"},
+                    "cut_type": {"type": "string"},
+                    "shot_scale": {"type": "string"},
+                    "camera_movement": {"type": "string"},
+                    "continuity_logic": {"type": "string"},
+                    "visual_description": {"type": "string"},
+                    "micro_motion": {"type": "array", "items": {"type": "string"}},
+                    "sfx_layer": {"type": "array", "items": {"type": "string"}},
+                    "emotion_pulse": {"type": "string"}
+                  }
                 }
-              },
-              "lighting": {"type": "string"},
-              "color": {"type": "string"},
-              "mood": {"type": "string"},
-              "prompt": {"type": "string"}
+              }
             }
           }
         }
       }
     },
-    "character_sheet": {"type": "array"},
-    "script_reconstruction": {
+    "four_panel_export": {
       "type": "object",
-      "required": ["scenes"],
-      "properties": {"scenes": {"type": "array"}}
-    },
-    "story_structure": {
-      "type": "object",
-      "required": ["setup", "conflict", "turning_point", "climax", "resolution"],
+      "required": ["enabled", "panel_units"],
       "properties": {
-        "setup": {"type": "string"},
-        "conflict": {"type": "string"},
-        "turning_point": {"type": "string"},
-        "climax": {"type": "string"},
-        "resolution": {"type": "string"},
-        "emotion_curve": {"type": "array", "items": {"type": "string"}}
-      }
-    },
-    "optimized_script": {
-      "type": "object",
-      "required": ["modifications_applied", "logic_check", "updated_scenes"],
-      "properties": {
-        "modifications_applied": {"type": "array", "items": {"type": "string"}},
-        "logic_check": {
-          "type": "object",
-          "required": ["status", "notes"],
-          "properties": {
-            "status": {"type": "string", "enum": ["valid", "adjusted"]},
-            "notes": {"type": "string"}
+        "enabled": {"type": "boolean"},
+        "panel_units": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["source_sequence_id", "panel_1_start", "panel_2_motion", "panel_3_turn", "panel_4_lock"],
+            "properties": {
+              "source_sequence_id": {"type": "string"},
+              "panel_1_start": {"type": "string"},
+              "panel_2_motion": {"type": "string"},
+              "panel_3_turn": {"type": "string"},
+              "panel_4_lock": {"type": "string"}
+            }
           }
-        },
-        "updated_scenes": {"type": "array"}
+        }
       }
     },
-    "meta_prompts": {"type": "array", "items": {"type": "string"}},
-    "replacement_guide": {"type": "array", "items": {"type": "string"}},
     "generation_package": {
       "type": "object",
-      "required": ["dreamina_prompt", "camera_parameters", "character_ref", "frame_guidance"],
+      "required": ["dreamina_prompt", "camera_parameters"],
       "properties": {
         "dreamina_prompt": {"type": "string"},
         "camera_parameters": {
@@ -102,25 +86,6 @@
             "vertical": {"type": "number"},
             "zoom": {"type": "number"},
             "stability": {"type": "string", "enum": ["low", "medium", "high"]}
-          }
-        },
-        "character_ref": {
-          "type": "object",
-          "required": ["appearance", "costume", "identity_tags", "consistency_rules"],
-          "properties": {
-            "appearance": {"type": "string"},
-            "costume": {"type": "string"},
-            "identity_tags": {"type": "array", "items": {"type": "string"}},
-            "consistency_rules": {"type": "array", "items": {"type": "string"}}
-          }
-        },
-        "frame_guidance": {
-          "type": "object",
-          "required": ["start_frame", "end_frame", "transition_hint"],
-          "properties": {
-            "start_frame": {"type": "string"},
-            "end_frame": {"type": "string"},
-            "transition_hint": {"type": "string"}
           }
         }
       }

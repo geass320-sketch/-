@@ -7,6 +7,10 @@
     "mode": "variation",
     "description": "保留追逐节奏，改为赛博朋克机械武士风格"
   },
+  "analysis_preference": {
+    "core_layer": "native_plus_four_panel",
+    "need_four_panel_export": true
+  },
   "edit_instruction": {
     "scene": "雨夜霓虹街道",
     "character": "机械武士",
