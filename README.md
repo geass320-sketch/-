@@ -43,3 +43,19 @@ Continuation examples:
 - `--mode first_last_frame --first-frame ./assets/frame0.png --last-frame ./assets/frame1.png`
 
 `auto_gen.py` remains the main entrypoint for external orchestrators and only downloads videos after validation gates pass.
+
+## OpenClaw Evolution Agent (daily self-evolution loop)
+
+This repo also includes a minimum-viable daily evolution runner for video-generation knowledge/asset accumulation:
+
+```bash
+python openclaw_evolution_agent.py \
+  --date 2026-04-03 \
+  --root /path/to/repo
+```
+
+It creates/uses `openclaw_evolution/` and writes:
+- `daily_briefs/YYYY-MM-DD.md`
+- `inbox_sources/YYYY-MM-DD.links.md`
+- 2-4 assets under `prompt_templates/`, `code_snippets/`, `knowledge_base/`
+- `run_logs/YYYY-MM-DD.log`
